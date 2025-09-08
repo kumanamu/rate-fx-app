@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="ko">
+<head>
+  <meta charset="UTF-8"/>
+  <title th:text="'데모 · ' + ${title}">차트 + 뉴스 데모</title>
+  <style>
+    body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
+    .layout {
+      display: grid;
+      grid-template-columns: 1fr 360px;
+      height: 100vh;
+    }
+    .chart {
+      padding: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #fafafa;
+    }
+    .placeholder {
+      width: 90%;
+      height: 70%;
+      border: 2px dashed #cbd5e1;
+      border-radius: 12px;
+      color: #64748b;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      text-align: center;
+      line-height: 1.6;
+    }
+    .panel {
+      border-left: 1px solid #e5e7eb;
+      background: #fff;
+      display: flex;
+      flex-direction: column;
+    }
+    header {
+      padding: 12px 16px;
+      border-bottom: 1px solid #e5e7eb;
+      font-weight: 600;
+    }
+    iframe { width: 100%; height: 100%; border: 0; }
+  </style>
+</head>
+<body>
+<div class="layout">
+  <!-- 왼쪽: 차트 자리(비워둠) -->
+  <div class="chart">
+    <div class="placeholder">
+      차트 자리 (빈 공간)<br/>
+      실제 차트를 여기 넣고, 오른쪽은 뉴스 패널을 iframe으로 고정
+    </div>
+  </div>
+
+  <!-- 오른쪽: 뉴스 패널 -->
+  <div class="panel">
+    <header th:text="${title}">Bitcoin (BTC/KRW)</header>
+    <!-- 예시: /rate/frag/news/forChart?symbol=BTC/KRW&limit=10 -->
+    <iframe th:src="${iframeSrc}"></iframe>
+  </div>
+</div>
+</body>
+</html>

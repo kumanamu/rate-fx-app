@@ -2,7 +2,7 @@
 <html xmlns:th="http://www.thymeleaf.org" lang="ko">
 <head>
   <meta charset="UTF-8"/>
-  <title>내부 서버 오류 (5xx)</title>
+  <title th:text="'오류 - ' + ${status}">오류</title>
   <style>
     body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:48px;color:#0f172a}
     h1{margin:0 0 8px}
@@ -14,8 +14,9 @@
   </style>
 </head>
 <body>
-<h1>내부 서버 오류가 발생했습니다</h1>
-<p class="muted">잠시 후 다시 시도해 주세요.</p>
+<h1 th:text="'문제가 발생했습니다 (' + ${status} + ')'">문제가 발생했습니다</h1>
+<div class="muted" th:text="${error}">Error</div>
+
 <div class="box">
   <div><strong>메시지:</strong> <span th:text="${message}">-</span></div>
   <div><strong>요청 경로:</strong> <code th:text="${path}">/</code></div>
@@ -23,6 +24,7 @@
     <span>시간: </span><span th:text="${timestamp}">-</span>
   </div>
 </div>
+
 <div class="actions">
   <a href="/">홈으로</a>
   <a href="/rate/news">뉴스 메인</a>
