@@ -1,4 +1,3 @@
-
 package com.team.rate.config;
 
 import org.springframework.context.annotation.Bean;
@@ -8,7 +7,7 @@ import org.springframework.web.client.RestTemplate;
 @Configuration
 public class RateRestConfig {
     @Bean
-    public RestTemplate rateRestTemplate() {
+    public RestTemplate restTemplate() {
         return new RestTemplate();
     }
 }
