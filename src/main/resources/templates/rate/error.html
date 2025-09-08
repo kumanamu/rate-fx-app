@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="ko">
+<head>
+  <meta charset="UTF-8"/>
+  <title th:text="${status} + ' ' + ${error}">오류</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 40px; line-height: 1.5; }
+    h1 { margin: 0 0 6px; }
+    .meta { color: #666; margin-bottom: 20px; }
+    .card { background: #fafafa; border: 1px solid #eee; padding: 16px; border-radius: 10px; }
+    .mono { font-family: ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; white-space: pre-wrap; word-break: break-word; }
+    a { color: #1261c4; text-decoration: none; }
+  </style>
+</head>
+<body>
+<h1 th:text="'오류: ' + ${status} + ' ' + ${error}">오류</h1>
+<div class="meta">
+  <div>요청 경로: <span class="mono" th:text="${path}">/path</span></div>
+  <div>발생 시각: <span th:text="${timestamp}">timestamp</span></div>
+</div>
+
+<div class="card">
+  <strong>메시지</strong>
+  <div class="mono" th:text="${message} ?: 'No message'">에러 메시지</div>
+</div>
+
+<div class="card" th:if="${trace}" style="margin-top:16px;">
+  <strong>Stack Trace</strong>
+  <div class="mono" th:text="${trace}">stacktrace</div>
+</div>
+
+<p style="margin-top:20px;">
+  <a href="javascript:history.back()">◀ 뒤로가기</a>
+  &nbsp;|&nbsp;
+  <a href="/">홈으로</a>
+</p>
+</body>
+</html>
