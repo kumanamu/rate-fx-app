@@ -2,28 +2,28 @@
 <html xmlns:th="http://www.thymeleaf.org" lang="ko">
 <head>
     <meta charset="UTF-8"/>
-    <title th:text="'뉴스 · ' + ${title}">뉴스 · ITEM</title>
+    <title th:text="'뉴스 · ' + ${title}">뉴스</title>
     <style>
-        body { margin: 24px; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; line-height: 1.6; }
-        h1 { margin: 0 0 10px; font-size: 20px; }
-        .item { margin: 8px 0; }
-        .sep { font-family: ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; color: #94a3b8; }
-        a.title { color: #0f172a; text-decoration: none; }
-        .time { color: #475569; margin-left: 8px; white-space: nowrap; }
-        .muted { color: #64748b; }
+        body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 24px; }
+        h1 { margin-bottom: 12px; }
+        .item { padding: 10px 0; }
+        .sep { color:#bbb; letter-spacing:1px; }
+        .num { width:36px; display:inline-block; text-align:right; margin-right:8px; color:#666; }
+        .time { color:#888; font-size:0.92rem; margin-top:4px; }
+        a.title { color:#111; text-decoration:none; }
+        a.title:hover { text-decoration:underline; }
     </style>
 </head>
 <body>
 <h1 th:text="'뉴스 · ' + ${title}">뉴스</h1>
 
-<div th:if="${#lists.isEmpty(items)}" class="muted">결과 없음</div>
-
+<div th:if="${#lists.isEmpty(items)}">결과가 없습니다.</div>
 <div th:each="it : ${items}" class="item" th:if="${!#lists.isEmpty(items)}">
     <div>
-        <strong th:text="${it.no} + '.'">1.</strong>
-        <a class="title" th:href="${it.link}" th:text="${it.title}" target="_blank" rel="noopener">제목</a>
-        <span class="time" th:text="${it.time}">-</span>
+        <span class="num" th:text="${it.no}">1</span>
+        <a class="title" th:href="${it.link}" target="_blank" rel="noopener" th:text="${it.title}">기사 제목</a>
     </div>
+    <div class="time" th:text="${it.time}">2025-09-09 09:00</div>
     <div class="sep">---------------------------------------------</div>
 </div>
 </body>

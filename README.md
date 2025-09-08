@@ -1,15 +1,41 @@
+# rate-fx-app · Refactor Pack (v3)
 
-# rate-fx-app
+정리 목표
+- `web` 패키지 제거 → `controller`로 통일
+- `entity`/`repository` 추가 (DB 규칙: `asset_id` FK)
+- 뉴스는 **asset_id → symbol/name** 매핑 후 기존 `RateNewsService` 사용 (로직 변경 없음)
+- 템플릿 정리: 리스트/패널/데모/에러
 
-Thymeleaf + Spring Boot + JPA + MySQL + Lombok으로 일별 환율(USD/KRW, JPY/KRW[100엔], EUR/KRW)의 현재가/등락률/등락금액을 표시하는 MVP.
+## 적용 순서
+1) 기존 프로젝트에서 **`src/main/java/com/team/rate/web` 패키지 전체 삭제**  
+   (이 패치에 동일 컨트롤러가 `controller`로 제공됩니다)
+2) 이 압축의 파일을 프로젝트 루트에 **덮어쓰기**
+3) Gradle `clean` → 재실행
+4) 확인
+   - `/rate/news/by-asset/1`
+   - `/rate/frag/news/forChart?assetId=1&limit=10` (iframe)
+   - `/rate/news/by?code=005930` or `?symbol=BTC/KRW`
+   - `/rate/news-economy` (메인 경제 뉴스)
+   - 데모: `/rate/demo/bitcoin`, `/rate/demo/chart-news?code=005930`
 
-## 실행
-1) MySQL에 `fxapp` DB 생성 후 사용자(fx/fxpwd) 준비
-2) `src/main/resources/application.properties`에서 DB 정보와 `twelvedata.apikey` 확인
-3) IDE(인텔리제이)에서 Gradle 프로젝트로 열기
-4) `http://localhost:8080/rate/admin/refresh` 로 데이터 수집
-5) `http://localhost:8080/rate/fx/daily` 로 화면 확인
+## 포함 파일
+- `src/main/java/com/team/rate/controller/RateNewsController.java`
+- `src/main/java/com/team/rate/controller/RateDemoController.java`
+- `src/main/java/com/team/rate/entity/Asset.java`
+- `src/main/java/com/team/rate/entity/News.java`
+- `src/main/java/com/team/rate/repository/AssetRepository.java`
+- `src/main/java/com/team/rate/repository/NewsRepository.java`
+- `src/main/resources/templates/rate/rate_news_panel.html`
+- `src/main/resources/templates/rate/rate_news_list.html`
+- `src/main/resources/templates/rate/rate_news_main.html`
+- `src/main/resources/templates/rate/demo_chart_news.html`
+- `src/main/resources/templates/error.html`
+- `src/main/resources/templates/error/404.html`
+- `src/main/resources/templates/error/5xx.html`
 
-## 참고
-- 패키지/클래스/뷰에 `rate` 접두사 사용
-- 엔화는 화면 표시만 100엔 기준(*100) 처리
+## 팀 규칙 (요약)
+- 종목 식별은 `assets.asset_id`로 통일
+- 컨트롤러는 `controller` 패키지에만 위치
+- DB 스키마 예시
+  - `assets(asset_id PK, symbol VARCHAR, name VARCHAR)`
+  - `news(news_id PK, asset_id FK -> assets.asset_id, timestamp DATETIME, title VARCHAR, url_link VARCHAR)`

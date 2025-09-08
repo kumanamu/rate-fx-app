@@ -1,198 +1,244 @@
 package com.team.rate.service;
 
-import com.team.rate.api.RateNaverSearchClient;
+import com.team.rate.config.NaverApiProperties;
 import com.team.rate.dto.RateNewsItem;
-import lombok.RequiredArgsConstructor;
-import org.springframework.cache.annotation.Cacheable;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestClient;
+import org.springframework.web.util.UriComponentsBuilder;
 
 import java.net.URI;
-import java.time.Instant;
-import java.time.ZonedDateTime;
-import java.time.format.DateTimeFormatter;
+import java.net.URISyntaxException;
 import java.util.*;
+import java.util.stream.Collectors;
 
+import java.nio.charset.StandardCharsets;
+import org.springframework.http.ResponseEntity;
+
+@Slf4j
 @Service
-@RequiredArgsConstructor
 public class RateNewsService {
 
-    private final RateNaverSearchClient naverClient;
+    private final RestClient http;
+    private final NaverApiProperties props;
 
-    // 프리셋: 키 → 네이버 검색어
-    private static final Map<RateNewsKey, String> QUERY = Map.ofEntries(
-            Map.entry(RateNewsKey.SAMSUNG,  "삼성전자"),
-            Map.entry(RateNewsKey.SKHYNIX,  "SK하이닉스"),
-            Map.entry(RateNewsKey.LGES,     "LG에너지솔루션"),
-            Map.entry(RateNewsKey.APPLE,    "Apple"),
-            Map.entry(RateNewsKey.NVIDIA,   "NVIDIA"),
-            Map.entry(RateNewsKey.BITCOIN,  "비트코인"),
-            Map.entry(RateNewsKey.ETHEREUM, "이더리움"),
-            Map.entry(RateNewsKey.RIPPLE,   "리플"),
-            Map.entry(RateNewsKey.DOGE,     "도지코인"),
-            Map.entry(RateNewsKey.SOLANA,   "솔라나")
+    public RateNewsService(NaverApiProperties props) {
+        this.props = props;
+        this.http = RestClient.create(); // full URL로 호출할 것이므로 baseUrl 불필요
+    }
+
+    // ===== 프리셋(동의어/보조키워드) =====
+    private static final Map<RateNewsKey, List<String>> PRESET_SYNONYMS = Map.ofEntries(
+            Map.entry(RateNewsKey.SAMSUNG,  List.of("삼성전자", "005930", "삼성전자 주가", "삼성전자 뉴스")),
+            Map.entry(RateNewsKey.SKHYNIX,  List.of("SK하이닉스", "000660", "하이닉스", "SK하이닉스 주가", "SK하이닉스 뉴스")),
+            Map.entry(RateNewsKey.LGES,     List.of("LG에너지솔루션", "373220", "LG에너지", "LG에너지솔루션 주가", "LG에너지솔루션 뉴스")),
+            Map.entry(RateNewsKey.APPLE,    List.of("애플", "AAPL", "Apple", "애플 주가", "애플 뉴스")),
+            Map.entry(RateNewsKey.NVIDIA,   List.of("엔비디아", "NVDA", "NVIDIA", "엔비디아 주가", "엔비디아 뉴스")),
+            Map.entry(RateNewsKey.BITCOIN,  List.of("비트코인", "BTC", "BTC/KRW", "비트코인 시세", "비트코인 뉴스")),
+            Map.entry(RateNewsKey.ETHEREUM, List.of("이더리움", "ETH", "ETH/KRW", "이더리움 시세", "이더리움 뉴스")),
+            Map.entry(RateNewsKey.RIPPLE,   List.of("리플", "XRP", "XRP/KRW", "리플 시세", "리플 뉴스")),
+            Map.entry(RateNewsKey.DOGE,     List.of("도지코인", "도지", "DOGE", "DOGE/KRW", "도지코인 시세", "도지코인 전망", "도지코인 뉴스")),
+            Map.entry(RateNewsKey.SOLANA,   List.of("솔라나", "SOL", "SOL/KRW", "솔라나 시세", "솔라나 뉴스"))
     );
+    private static final List<String> SUFFIXES = List.of("", " 시세", " 전망", " 뉴스");
+    private static final int MAX_EXPANDED_QUERIES = 8;
 
-    /** 차트에서 코드/심볼을 던지면 자동 매핑해 N건 조회 */
-    public List<RateNewsItem> searchForChart(String codeOrSymbol, int limit) {
-        if (codeOrSymbol == null || codeOrSymbol.isBlank()) return List.of();
-        RateNewsKey key = fromSymbol(codeOrSymbol);
-        if (key != null) return searchPreset(key, limit);
-        return searchNaverNews(codeOrSymbol, limit); // 폴백
+    private static int perQueryLimit(int totalLimit, int queryCount) {
+        int base = (int) Math.ceil((totalLimit * 1.5) / Math.max(1, queryCount));
+        return Math.max(3, Math.min(base, totalLimit));
     }
 
-    /** 메인: 경제 뉴스 (여러 키워드 개별 호출 → 합치기 → 중복 제거 → 최신순 정렬) */
-    @Cacheable(value = "newsEconomy", key = "'economy-v2-' + #limit")
+    // ===== 공개 API (컨트롤러에서 호출) =====
     public List<RateNewsItem> searchEconomy(int limit) {
-        int cap = cap(limit);
-
-        // 효과가 좋았던 키워드 세트 (필요 시 가감 가능)
-        List<String> keywords = List.of(
-                "증시", "경제", "금리", "환율",
-                "경기", "물가",
-                "코스피", "코스닥",
-                "미국증시", "나스닥",
-                "연준", "기준금리"
-        );
-
-        // 합치기 + 중복제거
-        List<ItemExt> bucket = new ArrayList<>();
-        Set<String> seen = new HashSet<>(); // title+host 기준 중복 방지
-
-        for (String q : keywords) {
-            var res = naverClient.searchNews(q, 20, 1, "date"); // 키워드별 최대 20건
-            if (res == null || res.getItems() == null) continue;
-
-            for (var it : res.getItems()) {
-                String title = cleanTitle(it.getTitle());
-                String link = (it.getLink() != null && !it.getLink().isBlank())
-                        ? it.getLink()
-                        : it.getOriginallink();
-                if (isBlank(title) || isBlank(link)) continue;
-
-                String host = hostOf(link);
-                String dedupKey = (title + "|" + host).toLowerCase(Locale.ROOT);
-                if (!seen.add(dedupKey)) continue; // 이미 본 기사
-
-                Instant ts = parsePub(it.getPubDate()); // 정렬용
-                bucket.add(new ItemExt(title, link, it.getPubDate(), ts));
-            }
-        }
-
-        // 최신순 정렬 → 상위 cap개
-        bucket.sort(Comparator.comparing(ItemExt::ts).reversed());
-        if (bucket.size() > cap) bucket = bucket.subList(0, cap);
-
-        // DTO 변환 (번호는 컨트롤러에서 1..n으로 재부여하므로 여기선 0으로 둬도 OK)
-        List<RateNewsItem> out = new ArrayList<>(bucket.size());
-        int no = 1;
-        for (ItemExt e : bucket) {
-            out.add(RateNewsItem.builder()
-                    .no(no++) // 바로 번호 붙여줌 (컨트롤러가 다시 1..n 부여해도 동일)
-                    .title(e.title())
-                    .link(e.link())
-                    .time(e.pubDate() == null ? "-" : e.pubDate())
-                    .build());
-        }
-        return out;
+        List<String> topics = List.of("경제", "금리", "환율", "연준", "코스피", "나스닥", "원달러", "수출", "물가", "고용");
+        return fanoutMerge(topics, limit);
     }
 
-    /** 프리셋 키로 검색 (캐시: 10분) */
-    @Cacheable(value = "newsByKey", key = "#key.name() + '-' + #limit")
     public List<RateNewsItem> searchPreset(RateNewsKey key, int limit) {
-        String query = QUERY.getOrDefault(key, null);
-        if (query == null) return List.of();
-        var res = naverClient.searchNews(query, cap(limit), 1, "date");
-        return convert(res, limit);
+        List<String> expanded = expandQueriesByKey(key);
+        return fanoutMerge(expanded, limit);
     }
 
-    /** 자유검색(보조) */
-    public List<RateNewsItem> searchNaverNews(String query, int limit) {
-        var res = naverClient.searchNews(query, cap(limit), 1, "date");
-        return convert(res, limit);
+    public List<RateNewsItem> searchForChart(String id, int limit) {
+        if (id == null || id.isBlank()) return List.of();
+        return fanoutMerge(List.of(id, id + " 뉴스"), limit);
     }
 
-    private int cap(int limit) { return Math.max(1, Math.min(limit, 50)); }
+    // ===== 팬아웃 병합/중복제거 =====
+    private List<RateNewsItem> fanoutMerge(List<String> queries, int totalLimit) {
+        if (queries == null || queries.isEmpty()) return List.of();
 
-    /** 코드/심볼 → 프리셋 키 매핑 */
-    public RateNewsKey fromSymbol(String symbol) {
-        if (symbol == null) return null;
-        String s = symbol.trim().toUpperCase(Locale.ROOT);
+        List<String> use = queries.size() > MAX_EXPANDED_QUERIES
+                ? queries.subList(0, MAX_EXPANDED_QUERIES) : queries;
+        int perLimit = perQueryLimit(totalLimit, use.size());
 
-        // 예: ETH/KRW → ETH
-        int slash = s.indexOf('/');
-        if (slash > 0) s = s.substring(0, slash);
+        Map<String, RateNewsItem> dedup = new LinkedHashMap<>();
+        for (String q : use) {
+            try {
+                List<RateNewsItem> one = searchOnce(q, perLimit);
+                for (RateNewsItem it : one) {
+                    if (it == null) continue;
+                    String key = dedupKey(it);
+                    dedup.putIfAbsent(key, it);
+                    if (dedup.size() >= totalLimit * 2) break;
+                }
+            } catch (Exception ex) {
+                log.warn("news search failed for '{}': {}", q, ex.toString());
+            }
+            if (dedup.size() >= totalLimit * 2) break;
+        }
 
-        switch (s) {
-            // 국내 주식 코드
-            case "005930": return RateNewsKey.SAMSUNG;   // 삼성전자
-            case "000660": return RateNewsKey.SKHYNIX;   // SK하이닉스
-            case "373220": return RateNewsKey.LGES;      // LG에너지솔루션
+        List<RateNewsItem> out = dedup.values().stream().limit(totalLimit).collect(Collectors.toList());
+        for (int i = 0; i < out.size(); i++) out.get(i).setNo(i + 1);
+        return out;
+    }
 
-            // 해외 주식 코드(요구 사양)
-            case "RBAQAAPL":
-            case "AAPL":   return RateNewsKey.APPLE;
+    private String dedupKey(RateNewsItem it) {
+        String link = safe(it.getLink());
+        if (!link.isEmpty()) return normalizeLink(link);
+        String title = safe(it.getTitle());
+        return title.isEmpty() ? UUID.randomUUID().toString() : title;
+    }
 
-            case "RBAQNVDA":
-            case "NVDA":   return RateNewsKey.NVIDIA;
+    private String safe(String s) { return s == null ? "" : s.trim(); }
 
-            // 크립토 심볼
-            case "BTC":    return RateNewsKey.BITCOIN;
-            case "ETH":    return RateNewsKey.ETHEREUM;
-            case "XRP":    return RateNewsKey.RIPPLE;
-            case "DOGE":   return RateNewsKey.DOGE;
-            case "SOL":    return RateNewsKey.SOLANA;
-
-            default: return null;
+    private String normalizeLink(String url) {
+        try {
+            URI u = new URI(url);
+            String q = u.getQuery();
+            if (q == null || q.isEmpty()) return url;
+            String kept = Arrays.stream(q.split("&"))
+                    .filter(p -> {
+                        String k = p.split("=", 2)[0].toLowerCase(Locale.ROOT);
+                        return !(k.startsWith("utm_") || k.equals("gs") || k.equals("m"));
+                    })
+                    .collect(Collectors.joining("&"));
+            return new URI(u.getScheme(), u.getAuthority(), u.getPath(),
+                    kept.isEmpty() ? null : kept, u.getFragment()).toString();
+        } catch (URISyntaxException e) {
+            return url;
         }
     }
 
-    /* 네이버 응답 → 화면 DTO */
-    private List<RateNewsItem> convert(RateNaverSearchClient.Response res, int limit) {
-        List<RateNewsItem> out = new ArrayList<>();
-        if (res == null || res.getItems() == null) return out;
-
-        int no = 1;
-        for (var it : res.getItems()) {
-            String title = cleanTitle(it.getTitle());
-            String link = (it.getLink() != null && !it.getLink().isBlank())
-                    ? it.getLink()
-                    : it.getOriginallink();
-
-            if (isBlank(title) || isBlank(link)) continue;
-
-            out.add(RateNewsItem.builder()
-                    .no(no++)
-                    .title(title)
-                    .link(link)
-                    .time(it.getPubDate() == null ? "-" : it.getPubDate())
-                    .build());
-            if (out.size() >= limit) break;
+    private List<String> expandQueriesByKey(RateNewsKey key) {
+        List<String> base = PRESET_SYNONYMS.getOrDefault(key, List.of(key.name()));
+        List<String> out = new ArrayList<>();
+        for (String b : base) {
+            for (String sfx : SUFFIXES) {
+                String q = (b + sfx).trim();
+                if (!out.contains(q)) out.add(q);
+                if (out.size() >= MAX_EXPANDED_QUERIES) break;
+            }
+            if (out.size() >= MAX_EXPANDED_QUERIES) break;
         }
         return out;
     }
 
-    /* ===== 유틸 ===== */
+    // ===== 실제 단일 호출 (Naver OpenAPI) =====
+    protected List<RateNewsItem> searchOnce(String query, int limit) {
+        if (!props.hasKeys()) {
+            log.warn("Naver API keys missing. Set naver.search.client-id / client-secret (또는 naver.api.* / 환경변수)");
+            return List.of();
+        }
 
-    private String cleanTitle(String raw) {
-        if (raw == null) return "";
-        return raw.replaceAll("<[^>]+>", ""); // <b> 제거
-    }
+        String endpoint = props.getNewsUrl(); // ex) https://openapi.naver.com/v1/search/news.json
+        // ✅ 한글 쿼리 인코딩 확실히
+        URI uri = org.springframework.web.util.UriComponentsBuilder.fromHttpUrl(endpoint)
+                .queryParam("query", query)
+                .queryParam("display", Math.max(1, Math.min(limit, 30)))
+                .queryParam("start", 1)
+                .queryParam("sort", "sim")
+                .build()
+                .encode(StandardCharsets.UTF_8)
+                .toUri();
 
-    private boolean isBlank(String s) { return s == null || s.isBlank(); }
-
-    private String hostOf(String url) {
-        try { return URI.create(url).getHost(); } catch (Exception e) { return ""; }
-    }
-
-    private Instant parsePub(String pub) {
-        if (pub == null || pub.isBlank()) return Instant.EPOCH;
         try {
-            // 네이버 pubDate 예: "Mon, 08 Sep 2025 16:20:00 +0900"
-            return ZonedDateTime.parse(pub, DateTimeFormatter.RFC_1123_DATE_TIME).toInstant();
-        } catch (Exception ignore) {
-            return Instant.EPOCH;
+            NaverNewsResp resp = http.get()
+                    .uri(uri)
+                    .header("X-Naver-Client-Id", props.getClientId())
+                    .header("X-Naver-Client-Secret", props.getClientSecret())
+                    .accept(MediaType.APPLICATION_JSON)
+                    .retrieve()
+                    .body(NaverNewsResp.class);
+
+            if (resp == null || resp.items == null || resp.items.isEmpty()) return List.of();
+
+            List<RateNewsItem> out = new ArrayList<>();
+            for (NaverItem it : resp.items) {
+                String title = stripTags(safe(it.title));
+                String link  = safe(it.link);
+                String time  = safe(it.pubDate);
+                if (title.isEmpty() || link.isEmpty()) continue;
+
+                RateNewsItem row = new RateNewsItem();
+                row.setNo(0);
+                row.setTitle(title);
+                row.setLink(link);
+                row.setTime(time);
+                out.add(row);
+            }
+            return out;
+        } catch (Exception ex) {
+            // 여기서 삼키지 말고 로깅
+            log.warn("naver news call failed. uri={}, err={}", uri, ex.toString());
+            return List.of();
         }
     }
 
-    private record ItemExt(String title, String link, String pubDate, Instant ts) {}
+    /** 🔎 원인 파악용: 상태코드/본문을 그대로 돌려줌 */
+    public Map<String, Object> debugRaw(String query, int limit) {
+        Map<String, Object> res = new LinkedHashMap<>();
+        res.put("hasKeys", props.hasKeys());
+        res.put("newsUrl", props.getNewsUrl());
+        if (!props.hasKeys()) return res;
+
+        URI uri = org.springframework.web.util.UriComponentsBuilder.fromHttpUrl(props.getNewsUrl())
+                .queryParam("query", query)
+                .queryParam("display", Math.max(1, Math.min(limit, 30)))
+                .queryParam("start", 1)
+                .queryParam("sort", "sim")
+                .build()
+                .encode(StandardCharsets.UTF_8)
+                .toUri();
+        res.put("uri", uri.toString());
+
+        try {
+            ResponseEntity<String> entity = http.get()
+                    .uri(uri)
+                    .header("X-Naver-Client-Id", props.getClientId())
+                    .header("X-Naver-Client-Secret", props.getClientSecret())
+                    .accept(MediaType.APPLICATION_JSON)
+                    .retrieve()
+                    .toEntity(String.class);
+            res.put("status", entity.getStatusCode().value());
+            res.put("ok", entity.getStatusCode().is2xxSuccessful());
+            res.put("body", entity.getBody());
+        } catch (Exception ex) {
+            res.put("error", ex.toString());
+        }
+        return res;
+    }
+
+    private static String stripTags(String s) {
+        if (s == null) return "";
+        String noTags = s.replaceAll("<[^>]+>", "");
+        return noTags.replace("&quot;", "\"")
+                .replace("&apos;", "'")
+                .replace("&amp;", "&")
+                .replace("&lt;", "<")
+                .replace("&gt;", ">");
+    }
+
+    // ===== 응답 DTO =====
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    static class NaverNewsResp { public List<NaverItem> items; }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    static class NaverItem {
+        public String title;
+        public String link;
+        public String pubDate;
+    }
 }

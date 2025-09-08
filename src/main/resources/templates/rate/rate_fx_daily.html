@@ -11,25 +11,22 @@
         th { background: #f6f6f6; }
         td:first-child, th:first-child { text-align: center; }
 
-        /* 현재가 강조 */
-        td.price { font-weight: 700; font-size: 1.12em; color: #111; white-space: nowrap; }
-
-        /* 등락 색상 */
-        .up { color: #d23b3b; }      /* 빨강 */
-        .down { color: #1261c4; }    /* 파랑 */
+        .up { color: #d23b3b; }
+        .down { color: #1261c4; }
         .mute { color: #888; }
 
-        /* 방향 아이콘용 공통 클래스 */
         td.delta::before {
-            content: "—";              /* 기본: 보합 대시 */
+            content: "—";
             color: #b3b3b3;
             display: inline-block;
             width: 1.1em;
             margin-right: 6px;
             text-align: center;
         }
-        td.delta.up::before   { content: "▲"; color: #d23b3b; }  /* 상승 */
-        td.delta.down::before { content: "▼"; color: #1261c4; }  /* 하락 */
+        td.delta.up::before   { content: "▲"; color: #d23b3b; }
+        td.delta.down::before { content: "▼"; color: #1261c4; }
+
+        td.price { font-weight: 700; font-size: 1.05rem; }
     </style>
 </head>
 <body>
@@ -49,15 +46,11 @@
         <tbody>
         <tr th:each="r : ${usdRows}">
             <td th:text="${r.date}"></td>
-            <td class="price" th:text="${#numbers.formatDecimal(r.price, 1, 'COMMA', 2, 'POINT')}"></td>
-
-            <td class="delta"
-                th:classappend="${r.up} ? ' up' : (${r.down} ? ' down' : ' mute')"
-                th:text="${#numbers.formatDecimal(r.change, 1, 'COMMA', 2, 'POINT')}"></td>
-
-            <td class="delta"
-                th:classappend="${r.up} ? ' up' : (${r.down} ? ' down' : ' mute')"
-                th:text="${#numbers.formatDecimal(r.changePercent, 1, 'COMMA', 2, 'POINT')} + '%'"></td>
+            <td class="price" th:text="${r.priceText}">-</td>
+            <td class="delta" th:classappend="${r.up} ? ' up' : (${r.down} ? ' down' : ' mute')"
+                th:text="${r.changeText}">-</td>
+            <td class="delta" th:classappend="${r.up} ? ' up' : (${r.down} ? ' down' : ' mute')"
+                th:text="${r.changePercentText}">-</td>
         </tr>
         </tbody>
     </table>
@@ -77,15 +70,11 @@
         <tbody>
         <tr th:each="r : ${jpyRows}">
             <td th:text="${r.date}"></td>
-            <td class="price" th:text="${#numbers.formatDecimal(r.price, 1, 'COMMA', 2, 'POINT')}"></td>
-
-            <td class="delta"
-                th:classappend="${r.up} ? ' up' : (${r.down} ? ' down' : ' mute')"
-                th:text="${#numbers.formatDecimal(r.change, 1, 'COMMA', 2, 'POINT')}"></td>
-
-            <td class="delta"
-                th:classappend="${r.up} ? ' up' : (${r.down} ? ' down' : ' mute')"
-                th:text="${#numbers.formatDecimal(r.changePercent, 1, 'COMMA', 2, 'POINT')} + '%'"></td>
+            <td class="price" th:text="${r.priceText}">-</td>
+            <td class="delta" th:classappend="${r.up} ? ' up' : (${r.down} ? ' down' : ' mute')"
+                th:text="${r.changeText}">-</td>
+            <td class="delta" th:classappend="${r.up} ? ' up' : (${r.down} ? ' down' : ' mute')"
+                th:text="${r.changePercentText}">-</td>
         </tr>
         </tbody>
     </table>
@@ -105,23 +94,14 @@
         <tbody>
         <tr th:each="r : ${eurRows}">
             <td th:text="${r.date}"></td>
-            <td class="price" th:text="${#numbers.formatDecimal(r.price, 1, 'COMMA', 2, 'POINT')}"></td>
-
-            <td class="delta"
-                th:classappend="${r.up} ? ' up' : (${r.down} ? ' down' : ' mute')"
-                th:text="${#numbers.formatDecimal(r.change, 1, 'COMMA', 2, 'POINT')}"></td>
-
-            <td class="delta"
-                th:classappend="${r.up} ? ' up' : (${r.down} ? ' down' : ' mute')"
-                th:text="${#numbers.formatDecimal(r.changePercent, 1, 'COMMA', 2, 'POINT')} + '%'"></td>
+            <td class="price" th:text="${r.priceText}">-</td>
+            <td class="delta" th:classappend="${r.up} ? ' up' : (${r.down} ? ' down' : ' mute')"
+                th:text="${r.changeText}">-</td>
+            <td class="delta" th:classappend="${r.up} ? ' up' : (${r.down} ? ' down' : ' mute')"
+                th:text="${r.changePercentText}">-</td>
         </tr>
         </tbody>
     </table>
 </section>
-
-<p class="mute" style="margin-top:16px;">
-    데이터 출처: TwelveData (표시 시각: Asia/Seoul, 엔화는 100엔 기준 표시)
-    · <a href="/rate/admin/refresh">수동 갱신</a>
-</p>
 </body>
 </html>
